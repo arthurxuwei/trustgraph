@@ -207,6 +207,7 @@ class Processor(ChunkingService):
                 component_version=COMPONENT_VERSION,
                 label=f"Chunk {chunk_index}",
                 chunk_index=chunk_index,
+                chunk_count=len(chunks),
                 char_offset=char_offset,
                 char_length=chunk_length,
                 chunk_size=chunk_size,

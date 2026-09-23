@@ -362,6 +362,32 @@ class TestDerivedEntityTriples:
         ov = find_triple(triples, TG_CHUNK_OVERLAP)
         assert ov is not None and ov.o.value == "64"
 
+    def test_chunk_count_emitted_when_supplied(self):
+        """Consumers need to know how many chunks a document produced.
+
+        Without it a downstream reader cannot tell "all chunks have arrived"
+        from "the producer is still working", and has to guess from gaps in
+        chunk_index / char_offset.
+        """
+        triples = derived_entity_triples(
+            self.ENTITY_URI, self.PARENT_URI,
+            "chunker", "1.0",
+            chunk_index=5,
+            chunk_count=37,
+            timestamp="2024-01-01T00:00:00Z",
+        )
+        cc = find_triple(triples, TG_CHUNK_COUNT, self.ENTITY_URI)
+        assert cc is not None and cc.o.value == "37"
+
+    def test_chunk_count_omitted_when_absent(self):
+        triples = derived_entity_triples(
+            self.ENTITY_URI, self.PARENT_URI,
+            "chunker", "1.0",
+            chunk_index=5,
+            timestamp="2024-01-01T00:00:00Z",
+        )
+        assert find_triple(triples, TG_CHUNK_COUNT, self.ENTITY_URI) is None
+
 
 # ---------------------------------------------------------------------------
 # subgraph_provenance_triples
@@ -371,6 +397,7 @@ class TestSubgraphProvenanceTriples:
 
     SG_URI = "https://trustgraph.ai/subgraph/test-sg"
     CHUNK_URI = "https://example.com/doc/abc/p1/c0"
+
 
     def _make_extracted_triple(self, s="urn:e:Alice", p="urn:r:knows", o="urn:e:Bob"):
         return Triple(
