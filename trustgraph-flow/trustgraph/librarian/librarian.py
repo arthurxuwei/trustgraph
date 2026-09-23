@@ -27,6 +27,7 @@ class Librarian:
             object_store_endpoint, object_store_access_key, object_store_secret_key,
             bucket_name, keyspace, load_document,
             object_store_use_ssl=False, object_store_region=None,
+            object_store_provider="s3", object_store_role_name=None,
             min_chunk_size=1,  # Default: no minimum (for Garage)
             replication_factor=1,
     ):
@@ -34,6 +35,7 @@ class Librarian:
         self.blob_store = BlobStore(
             object_store_endpoint, object_store_access_key, object_store_secret_key, bucket_name,
             use_ssl=object_store_use_ssl, region=object_store_region,
+            provider=object_store_provider, role_name=object_store_role_name,
         )
 
         self.table_store = LibraryTableStore(

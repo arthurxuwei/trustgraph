@@ -65,10 +65,13 @@ ENV_OBJECT_STORE_ACCESS_KEY = "OBJECT_STORE_ACCESS_KEY"
 ENV_OBJECT_STORE_SECRET_KEY = "OBJECT_STORE_SECRET_KEY"
 ENV_OBJECT_STORE_USE_SSL = "OBJECT_STORE_USE_SSL"
 ENV_OBJECT_STORE_REGION = "OBJECT_STORE_REGION"
+ENV_OBJECT_STORE_BUCKET = "OBJECT_STORE_BUCKET"
+ENV_OBJECT_STORE_PROVIDER = "OBJECT_STORE_PROVIDER"
+ENV_OBJECT_STORE_ROLE_NAME = "OBJECT_STORE_ROLE_NAME"
 default_cassandra_host = "cassandra"
 default_min_chunk_size = 1  # No minimum by default (for Garage)
 
-bucket_name = "library"
+default_bucket_name = "library"
 
 class Processor(WorkspaceProcessor):
 
@@ -131,6 +134,20 @@ class Processor(WorkspaceProcessor):
             or os.environ.get(ENV_OBJECT_STORE_REGION)
             or default_object_store_region
         )
+        bucket_name = (
+            params.get("object_store_bucket")
+            or os.environ.get(ENV_OBJECT_STORE_BUCKET)
+            or default_bucket_name
+        )
+        object_store_provider = (
+            params.get("object_store_provider")
+            or os.environ.get(ENV_OBJECT_STORE_PROVIDER)
+            or "s3"
+        )
+        object_store_role_name = (
+            params.get("object_store_role_name")
+            or os.environ.get(ENV_OBJECT_STORE_ROLE_NAME)
+        )
 
         min_chunk_size = params.get(
             "min_chunk_size",
@@ -182,6 +199,8 @@ class Processor(WorkspaceProcessor):
             load_document = self.load_document,
             object_store_use_ssl = object_store_use_ssl,
             object_store_region = object_store_region,
+            object_store_provider = object_store_provider,
+            object_store_role_name = object_store_role_name,
             min_chunk_size = min_chunk_size,
         )
 
@@ -664,6 +683,25 @@ class Processor(WorkspaceProcessor):
             '--object-store-region',
             default=default_object_store_region,
             help='Object storage region (optional)',
+        )
+
+        parser.add_argument(
+            '--object-store-bucket',
+            default=default_bucket_name,
+            help=f'Object storage bucket (default: {default_bucket_name})',
+        )
+
+        parser.add_argument(
+            '--object-store-provider',
+            default='s3',
+            choices=['s3', 'oss'],
+            help='Object storage provider (default: s3)',
+        )
+
+        parser.add_argument(
+            '--object-store-role-name',
+            default=None,
+            help='ECS RAM role name for OSS (required when provider is oss)',
         )
 
         parser.add_argument(
