@@ -11,6 +11,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "trustgraph-base>=2.7,<2.8",
+    "alibabacloud_credentials>=0.3.6,<2",
     "aiohttp",
     "anthropic",
     "scylla-driver",
@@ -27,7 +28,7 @@ dependencies = [
     "langchain-core",
     "langchain-text-splitters",
     "mcp",
-    "minio",
+    "minio>=7.2.20,<8",
     "mistralai<2.0.0",
     "neo4j",
     "nltk",

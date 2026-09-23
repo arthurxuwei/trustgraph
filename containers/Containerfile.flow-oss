@@ -1,0 +1,10 @@
+FROM trustgraph/trustgraph-flow:2.7.5
+
+# Keep the running TrustGraph release fixed; only add the OSS credential
+# provider and the three Librarian modules changed for this migration.
+RUN python -m pip install --no-cache-dir 'alibabacloud-credentials==1.0.12'
+
+COPY trustgraph-flow/trustgraph/librarian/blob_store.py \
+     trustgraph-flow/trustgraph/librarian/librarian.py \
+     trustgraph-flow/trustgraph/librarian/service.py \
+     /usr/local/lib/python3.13/site-packages/trustgraph/librarian/

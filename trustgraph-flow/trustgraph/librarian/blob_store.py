@@ -3,6 +3,7 @@ from .. knowledge import hash
 from .. exceptions import RequestError
 
 from minio import Minio
+from minio.credentials import Credentials, Provider
 from minio.datatypes import Part
 from minio.error import S3Error
 import io
@@ -14,24 +15,57 @@ import asyncio
 # Module logger
 logger = logging.getLogger(__name__)
 
+
+class EcsRamRoleProvider(Provider):
+    """Supply rotating ECS RAM role credentials to the S3 client."""
+
+    def __init__(self, role_name):
+        from alibabacloud_credentials.client import Client
+        from alibabacloud_credentials.models import Config
+
+        self.client = Client(Config(
+            type="ecs_ram_role",
+            role_name=role_name,
+            disable_imds_v1=True,
+        ))
+
+    def retrieve(self):
+        credential = self.client.get_credential()
+        return Credentials(
+            credential.get_access_key_id(),
+            credential.get_access_key_secret(),
+            credential.get_security_token(),
+        )
+
 class BlobStore:
 
     def __init__(
             self,
             endpoint, access_key, secret_key, bucket_name,
-            use_ssl=False, region=None,
+            use_ssl=False, region=None, provider="s3", role_name=None,
     ):
-
-
-        self.client = Minio(
-            endpoint = endpoint,
-            access_key = access_key,
-            secret_key = secret_key,
-            secure = use_ssl,
-            region = region,
-        )
+        if provider == "oss":
+            if not role_name or not region or not use_ssl:
+                raise ValueError("OSS requires an ECS role, region, and TLS")
+            self.client = Minio(
+                endpoint=endpoint,
+                secure=True,
+                region=region,
+                credentials=EcsRamRoleProvider(role_name),
+            )
+        elif provider == "s3":
+            self.client = Minio(
+                endpoint=endpoint,
+                access_key=access_key,
+                secret_key=secret_key,
+                secure=use_ssl,
+                region=region,
+            )
+        else:
+            raise ValueError(f"Unsupported object store provider: {provider}")
 
         self.bucket_name = bucket_name
+        self.provider = provider
 
         protocol = "https" if use_ssl else "http"
         logger.info(f"Connected to S3-compatible storage at {protocol}://{endpoint}")
@@ -68,9 +102,11 @@ class BlobStore:
 
     def ensure_bucket(self):
 
-        # Make the bucket if it doesn't exist.
+        # OSS buckets are provisioned separately with least-privilege IAM.
         found = self.client.bucket_exists(bucket_name=self.bucket_name)
         if not found:
+            if self.provider == "oss":
+                raise RuntimeError(f"OSS bucket does not exist: {self.bucket_name}")
             self.client.make_bucket(bucket_name=self.bucket_name)
             logger.info(f"Created bucket {self.bucket_name}")
         else:
@@ -275,4 +311,3 @@ class BlobStore:
         )
 
         logger.info(f"Aborted multipart upload {upload_id} for {object_id}")
-

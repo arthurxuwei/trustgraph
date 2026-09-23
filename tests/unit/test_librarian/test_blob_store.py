@@ -4,7 +4,8 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from uuid import uuid4
 from minio.error import S3Error
-from trustgraph.librarian.blob_store import BlobStore
+from trustgraph.librarian.blob_store import BlobStore, EcsRamRoleProvider
+from trustgraph.librarian.librarian import Librarian
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,6 +28,103 @@ def _make_blob_store():
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+def test_oss_uses_ecs_role_and_never_creates_bucket():
+    mock_minio = MagicMock()
+    mock_minio.bucket_exists.return_value = True
+    with patch('trustgraph.librarian.blob_store.Minio', return_value=mock_minio) as minio:
+        with patch('trustgraph.librarian.blob_store.EcsRamRoleProvider') as role:
+            BlobStore(
+                endpoint='oss-cn-shenzhen-internal.aliyuncs.com',
+                access_key='ignored', secret_key='ignored',
+                bucket_name='trustgraph-library',
+                use_ssl=True, region='cn-shenzhen',
+                provider='oss', role_name='TrustGraphOssRole',
+            )
+
+    role.assert_called_once_with('TrustGraphOssRole')
+    assert minio.call_args.kwargs['credentials'] is role.return_value
+    assert minio.call_args.kwargs['secure'] is True
+    assert 'access_key' not in minio.call_args.kwargs
+    mock_minio.bucket_exists.assert_called_once_with(
+        bucket_name='trustgraph-library',
+    )
+    mock_minio.make_bucket.assert_not_called()
+
+
+@pytest.mark.parametrize('role,region,tls', [
+    (None, 'cn-shenzhen', True),
+    ('TrustGraphOssRole', None, True),
+    ('TrustGraphOssRole', 'cn-shenzhen', False),
+])
+def test_oss_rejects_incomplete_secure_config(role, region, tls):
+    with pytest.raises(ValueError, match='OSS requires'):
+        BlobStore(
+            endpoint='oss-cn-shenzhen-internal.aliyuncs.com',
+            access_key=None, secret_key=None,
+            bucket_name='trustgraph-library',
+            use_ssl=tls, region=region,
+            provider='oss', role_name=role,
+        )
+
+
+def test_oss_missing_bucket_fails_without_creating_it():
+    mock_minio = MagicMock()
+    mock_minio.bucket_exists.return_value = False
+    with patch('trustgraph.librarian.blob_store.Minio', return_value=mock_minio):
+        with patch('trustgraph.librarian.blob_store.EcsRamRoleProvider'):
+            with pytest.raises(RuntimeError, match='OSS bucket does not exist'):
+                BlobStore(
+                    endpoint='oss-cn-shenzhen-internal.aliyuncs.com',
+                    access_key=None, secret_key=None,
+                    bucket_name='trustgraph-library',
+                    use_ssl=True, region='cn-shenzhen',
+                    provider='oss', role_name='TrustGraphOssRole',
+                )
+    mock_minio.make_bucket.assert_not_called()
+
+
+def test_ecs_role_provider_returns_one_credential_snapshot():
+    with patch('alibabacloud_credentials.client.Client') as client:
+        credential = client.return_value.get_credential.return_value
+        credential.get_access_key_id.return_value = 'temporary-id'
+        credential.get_access_key_secret.return_value = 'temporary-secret'
+        credential.get_security_token.return_value = 'temporary-token'
+        provider = EcsRamRoleProvider('TrustGraphOssRole')
+        result = provider.retrieve()
+
+    assert result.access_key == 'temporary-id'
+    assert result.secret_key == 'temporary-secret'
+    assert result.session_token == 'temporary-token'
+    client.return_value.get_credential.assert_called_once_with()
+
+
+def test_librarian_forwards_oss_configuration_to_blob_store():
+    with patch('trustgraph.librarian.librarian.BlobStore') as blob_store:
+        with patch('trustgraph.librarian.librarian.LibraryTableStore'):
+            Librarian(
+                cassandra_host='cassandra',
+                cassandra_username=None,
+                cassandra_password=None,
+                object_store_endpoint='oss-cn-shenzhen-internal.aliyuncs.com',
+                object_store_access_key=None,
+                object_store_secret_key=None,
+                bucket_name='trustgraph-library',
+                keyspace='librarian',
+                load_document=None,
+                object_store_use_ssl=True,
+                object_store_region='cn-shenzhen',
+                object_store_provider='oss',
+                object_store_role_name='TrustGraphOssRole',
+            )
+
+    assert blob_store.call_args.kwargs == {
+        'use_ssl': True,
+        'region': 'cn-shenzhen',
+        'provider': 'oss',
+        'role_name': 'TrustGraphOssRole',
+    }
+    assert blob_store.call_args.args[3] == 'trustgraph-library'
 
 @pytest.mark.asyncio
 async def test_add_success_no_retry():
