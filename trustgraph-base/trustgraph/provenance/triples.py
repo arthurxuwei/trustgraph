@@ -155,6 +155,7 @@ def derived_entity_triples(
     section: bool = False,
     image: bool = False,
     chunk_index: Optional[int] = None,
+    chunk_count: Optional[int] = None,
     char_offset: Optional[int] = None,
     char_length: Optional[int] = None,
     chunk_size: Optional[int] = None,
@@ -184,7 +185,8 @@ def derived_entity_triples(
         page_number: Page number (for pages)
         section: True if this is a document section (non-page format)
         image: True if this is an image entity
-        chunk_index: Chunk index (for chunks)
+        chunk_index: Chunk index
+        chunk_count: Total number of chunks the parent was split into (for chunks)
         char_offset: Character offset in parent
         char_length: Character length
         chunk_size: Configured chunk size (for chunking activity)
@@ -273,6 +275,9 @@ def derived_entity_triples(
 
     if table_count is not None:
         triples.append(_triple(entity_uri, TG_TABLE_COUNT, _literal(table_count)))
+
+    if chunk_count is not None:
+        triples.append(_triple(entity_uri, TG_CHUNK_COUNT, _literal(chunk_count)))
 
     if image_count is not None:
         triples.append(_triple(entity_uri, TG_IMAGE_COUNT, _literal(image_count)))
