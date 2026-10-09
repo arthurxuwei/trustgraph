@@ -4,7 +4,10 @@
 set -euo pipefail
 
 REF=97079b66d4923d0f5b2d87c500f681e46e10ab21   # fork upgrade/v2.10.10-oss
-MIRROR=hub.rat.dev
+# Tried in order; a mirror that has not cached a new tag can hang for a long
+# time, so each pull gets a deadline before falling through to the next.
+MIRRORS="docker.m.daocloud.io hub.rat.dev"
+PULL_TIMEOUT=900
 PIP_MIRROR=https://mirrors.aliyun.com/pypi/simple/
 SRC_ROOT=/root/tg/src
 SRC=$SRC_ROOT/trustgraph-$REF
@@ -17,9 +20,15 @@ for img in trustgraph/trustgraph-flow:2.10.10 \
   if docker image inspect "$img" >/dev/null 2>&1; then
     echo "have $img"
   else
-    echo "pull $MIRROR/$img"
-    docker pull -q "$MIRROR/$img"
-    docker tag "$MIRROR/$img" "$img"
+    ok=
+    for m in $MIRRORS; do
+      echo "pull $m/$img (deadline ${PULL_TIMEOUT}s)"
+      if timeout $PULL_TIMEOUT docker pull -q "$m/$img"; then
+        docker tag "$m/$img" "$img"; ok=1; break
+      fi
+      echo "  failed or timed out on $m"
+    done
+    [ -n "$ok" ] || { echo "could not pull $img from any mirror"; exit 1; }
   fi
 done
 

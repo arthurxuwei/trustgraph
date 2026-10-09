@@ -9,7 +9,10 @@ for img in trustgraph/trustgraph-unstructured:2.7.5 \
            hub.rat.dev/trustgraph/trustgraph-ui:0.3.11 \
            hub.rat.dev/trustgraph/trustgraph-flow:2.10.10 \
            hub.rat.dev/trustgraph/trustgraph-docling:2.10.10 \
-           hub.rat.dev/trustgraph/trustgraph-ui:2.2.5; do
+           hub.rat.dev/trustgraph/trustgraph-ui:2.2.5 \
+           docker.m.daocloud.io/trustgraph/trustgraph-flow:2.10.10 \
+           docker.m.daocloud.io/trustgraph/trustgraph-docling:2.10.10 \
+           docker.m.daocloud.io/trustgraph/trustgraph-ui:2.2.5; do
   docker image rm "$img" 2>&1 | tail -1
 done
 docker builder prune -f | tail -1
