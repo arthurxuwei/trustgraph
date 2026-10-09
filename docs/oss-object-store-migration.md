@@ -34,9 +34,11 @@ it never creates a bucket or uses configured static access keys.
 2. In a maintenance window, stop new Librarian writes and wait for in-flight
    uploads and multipart sessions to complete. Run a final copy of changed or
    missing objects and compare the full `doc/*` inventory and content hashes.
-3. Back up the live launch configuration. Deploy the patched 2.7.5 flow image
-   to the control service only, set the configuration above, and restart that
-   service. Do not upgrade unrelated TrustGraph services as part of this change.
+3. Back up the live launch configuration. Deploy the patched flow image
+   (`containers/Containerfile.flow-oss`, based on 2.10.10) to the control
+   service, set the configuration above, and restart that service. The same
+   image also carries the `tg:chunkCount` patch, which only takes effect on the
+   service that runs the recursive chunker, so use it there as well.
 4. Exercise a small upload, range read, full download, multipart upload and
    delete through the TrustGraph API. Verify the existing document library and
    monitor errors before reopening writes.
@@ -46,6 +48,6 @@ it never creates a bucket or uses configured static access keys.
    endpoint back would lose access to post-cutover data.
 
 The S3-compatible MinIO client must use virtual-hosted-style OSS requests.
-The production 2.7.5 image contains MinIO 7.2.20, which selects that style for
+The 2.7.5 image verified in production contains MinIO 7.2.20, which selects that style for
 `aliyuncs.com` endpoints. Validate this, IAM permissions and multipart behavior
 against the target bucket before changing production configuration.

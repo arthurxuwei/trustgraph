@@ -1,10 +1,24 @@
 FROM trustgraph/trustgraph-flow:2.10.10
 
 # Keep the running TrustGraph release fixed; only add the OSS credential
-# provider and the three Librarian modules changed for this migration.
+# provider and the modules changed by our local patches:
+#   - Librarian: pluggable object store with Aliyun OSS support
+#   - Provenance + recursive chunker: emit tg:chunkCount on chunk entities
 RUN python -m pip install --no-cache-dir 'alibabacloud-credentials==1.0.12'
 
 COPY trustgraph-flow/trustgraph/librarian/blob_store.py \
      trustgraph-flow/trustgraph/librarian/librarian.py \
      trustgraph-flow/trustgraph/librarian/service.py \
      /usr/local/lib/python3.13/site-packages/trustgraph/librarian/
+
+COPY trustgraph-base/trustgraph/provenance/triples.py \
+     /usr/local/lib/python3.13/site-packages/trustgraph/provenance/
+
+COPY trustgraph-flow/trustgraph/chunking/recursive/chunker.py \
+     /usr/local/lib/python3.13/site-packages/trustgraph/chunking/recursive/
+
+# Fail the build if the overlaid files do not match the base image's layout.
+RUN python -c "\
+import inspect, trustgraph.librarian.blob_store, trustgraph.chunking.recursive.chunker; \
+from trustgraph.provenance.triples import derived_entity_triples; \
+assert 'chunk_count' in inspect.signature(derived_entity_triples).parameters"
