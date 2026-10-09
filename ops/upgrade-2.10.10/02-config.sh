@@ -26,12 +26,15 @@ sed -i 's#image: trustgraph-flow:2.7.5-oss#image: trustgraph-flow:2.10.10-oss#' 
   docker-compose.override.yaml
 
 # Docling loads torch and layout/table models; 0.5 CPU / 1400M is not enough.
+# Models are baked into the image; HF_ENDPOINT only matters if one is missing.
+echo >> docker-compose.override.yaml   # file may lack a trailing newline
 cat >> docker-compose.override.yaml <<'EOF'
 # --- 2.10.10 升级：document-decoder 换成 docling（torch + 版面/表格模型）---
   document-decoder:
     environment:
       DOCLING_NUM_THREADS: "2"
       OMP_NUM_THREADS: "2"
+      HF_ENDPOINT: "https://hf-mirror.com"
     deploy:
       resources:
         limits:

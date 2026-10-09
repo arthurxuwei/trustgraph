@@ -8,6 +8,8 @@ cd /Users/freedom/aml/trustgraph-2.10/ops/upgrade-2.10.10
 bash rc.sh i-wz93dhbsy21ndlm4v0nf 01-prep.sh 3600
 ```
 
+**每一步都由人在 Claude Code 里用 `!` 前缀执行**（例如 `! bash rc.sh ...`）。auto mode 不允许 Claude 直接操作生产，Claude 只负责解读输出、决定能不能进入下一步。
+
 只有第 3 步会停机，约 5 分钟。本次不准备回滚。
 
 ## 这次换了什么
@@ -52,6 +54,7 @@ overlay 镜像在官方 2.10.10 上叠了三个补丁（fork 分支 `upgrade/v2.
 - compose 中所有 flow 镜像换成 overlay；decoder 换成 docling；UI 换成 2.2.5。
 - override 里追加 document-decoder 的资源限额。
 - **launch.yaml 补上 concurrency**：2.10 每个 processor 只有一个工作池，所有 flow、所有工作区共用，默认只有 1 个 worker。2.7.5 是每个 flow 各有一个消费者，生产有十几个工作区。不补的话，triples 查询、向量查询、写入都会退化成串行。补的值见脚本，已经写过的值不覆盖。
+- launch.yaml 是用 `yaml.safe_dump` 整份重写的，**手写注释会丢失**，key 的引号风格也会变，但内容等价。原文件在 `launch.bak-pre-2.10-<时间>.tgz` 里。
 - 最后打印 diff，并用 `docker compose config -q` 校验。**先看一眼 diff 再进入第 3 步。**
 
 ### 第 3 步：切换（停机约 5 分钟）`03-cutover.sh`，超时给 900
@@ -73,10 +76,12 @@ overlay 镜像在官方 2.10.10 上叠了三个补丁（fork 分支 `upgrade/v2.
 - [ ] 用错误密码登录返回 **401** 和 `{"error": "auth failure"}`（返回 200 说明 gateway 没用上 overlay）
 - [ ] UI 的 8888 端口返回 200
 - [ ] docling-decoder 已经启动，没有报错
+- [ ] rag、ingest 日志里没有提示词模板找不到或加载失败的报错
 
 然后在 AML 侧手工验证：
 
 - [ ] **上传**：在测试空间（如 kaujtest）上传一个 docx 和一个带文字层的 PDF，文档状态走到完成，`docker logs bundle-document-decoder-1` 里能看到 docling 处理记录
+- [ ] **OCR 路径**：再传一个带图片区域的 PDF（比如带印章或照片页的），decoder 不能崩。docling 对所有 PDF 都开着 OCR，模型应该已经预装在镜像里，这一步用来确认运行时不会再去外网下载
 - [ ] **大文件回读**：打开一份 5MB 以上的已有材料，确认 OSS 读取正常
 - [ ] **抽取**：新材料的知识图谱抽取完成，实体中心能看到图谱
 - [ ] **chunkCount**：在该空间跑 SPARQL `SELECT ?c ?n WHERE { GRAPH <urn:graph:source> { ?c <https://trustgraph.ai/ns/chunkCount> ?n } } LIMIT 5`，应该有结果（只有新入库的文档才有）
@@ -88,6 +93,10 @@ overlay 镜像在官方 2.10.10 上叠了三个补丁（fork 分支 `upgrade/v2.
 ### 第 5 步：清理 `05-cleanup.sh`
 
 AML 侧验证都通过后，删掉 2.7.5 的旧镜像和镜像站的别名 tag（unstructured 一个就 7.8G）。只按名字删镜像，不碰数据卷。
+
+## 未核实的风险
+
+- **2.10 是否调用了生产配置里没有的提示词模板**：现有空间的模板是 2.7.5 时期写入的，TemplateSeed 和 WorkspaceInit 只补缺失的键、不覆盖已有的。如果 2.10 的 graph-rag、agent 或抽取用到了新的模板 id，会在第一次调用时报错。核对代码的那一步没能完成，靠第 4 步的问答、抽取验证和日志检查来兜底。
 
 ## 升级后行为上的变化（已知，接受）
 

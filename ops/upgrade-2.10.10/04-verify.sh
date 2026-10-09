@@ -19,6 +19,11 @@ for c in bundle-triples-1 bundle-vector-store-1 bundle-rag-1 bundle-ingest-1; do
   echo "-- $c"; docker logs --since 30m "$c" 2>&1 | grep -oE 'ReceiverPool started with [0-9]+ workers' | sort | uniq -c
 done
 
+echo "== prompt/template problems (2.10 loads every template.* key; a missing or broken one shows here)"
+for c in bundle-rag-1 bundle-ingest-1; do
+  echo "-- $c"; docker logs --since 30m "$c" 2>&1 | grep -iE 'template|prompt.*(not found|unknown|invalid|error)' | grep -iE 'error|not found|unknown|invalid|fail' | tail -5
+done
+
 echo "== gateway on 8088: bad login must be 401 auth failure (overlay fix; unpatched 2.10 answers 200)"
 curl -s -m 10 -w ' http=%{http_code}\n' -X POST http://localhost:8088/api/v1/auth/login \
   -H 'Content-Type: application/json' \
