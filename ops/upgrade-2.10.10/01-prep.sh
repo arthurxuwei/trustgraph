@@ -1,12 +1,16 @@
 #!/bin/bash
-# Step 1 (no downtime): pull 2.10.10 images through the mirror and build the
+# Step 1 (no downtime): pull 2.10.10 images from our ACR and build the
 # patched flow overlay. Safe to re-run; skips what is already present.
 set -euo pipefail
 
 REF=97079b66d4923d0f5b2d87c500f681e46e10ab21   # fork upgrade/v2.10.10-oss
-# Tried in order; a mirror that has not cached a new tag can hang for a long
-# time, so each pull gets a deadline before falling through to the next.
-MIRRORS="docker.m.daocloud.io hub.rat.dev"
+# The host cannot reach Docker Hub, and the public mirrors either refuse
+# trustgraph/* (daocloud allowlist) or hang (hub.rat.dev). The images are
+# copied into our ACR first (see README) and pulled over the VPC endpoint.
+# ACR_USER / ACR_TOKEN: a temporary token from `aliyun cr GetAuthorizationToken`,
+# exported at the top of this script by the operator; logged out afterwards.
+ACR=aml-registry-vpc.cn-shenzhen.cr.aliyuncs.com
+ACR_NS=$ACR/aml
 PULL_TIMEOUT=900
 PIP_MIRROR=https://mirrors.aliyun.com/pypi/simple/
 SRC_ROOT=/root/tg/src
@@ -14,21 +18,20 @@ SRC=$SRC_ROOT/trustgraph-$REF
 
 echo "== disk before"; df -h / | tail -1
 
+echo "${ACR_TOKEN:?export ACR_USER/ACR_TOKEN first}" \
+  | docker login -u "$ACR_USER" --password-stdin $ACR >/dev/null
+trap 'docker logout $ACR >/dev/null 2>&1 || true' EXIT
+
 for img in trustgraph/trustgraph-flow:2.10.10 \
            trustgraph/trustgraph-docling:2.10.10 \
            trustgraph/trustgraph-ui:2.2.5; do
   if docker image inspect "$img" >/dev/null 2>&1; then
     echo "have $img"
   else
-    ok=
-    for m in $MIRRORS; do
-      echo "pull $m/$img (deadline ${PULL_TIMEOUT}s)"
-      if timeout $PULL_TIMEOUT docker pull -q "$m/$img"; then
-        docker tag "$m/$img" "$img"; ok=1; break
-      fi
-      echo "  failed or timed out on $m"
-    done
-    [ -n "$ok" ] || { echo "could not pull $img from any mirror"; exit 1; }
+    src=$ACR_NS/${img#trustgraph/}
+    echo "pull $src"
+    timeout $PULL_TIMEOUT docker pull -q "$src"
+    docker tag "$src" "$img"
   fi
 done
 

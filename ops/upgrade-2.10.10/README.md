@@ -41,10 +41,22 @@ overlay 镜像在官方 2.10.10 上叠了三个补丁（fork 分支 `upgrade/v2.
 
 ### 第 1 步：准备（不停机）`01-prep.sh`，超时给 3600
 
-通过 `hub.rat.dev` 镜像站拉取 flow 2.10.10、docling 2.10.10、ui 2.2.5，拉完改成标准 tag。从 GitHub codeload 按固定 commit 拉源码，构建 `trustgraph-flow:2.10.10-oss`，pip 走阿里云源。
+宿主机访问不了 Docker Hub。公共镜像站也走不通：daocloud 不在白名单里，直接拒绝 `trustgraph/*`；hub.rat.dev 会一直卡住。所以分两段：
+
+1. **在本机把镜像中转到 ACR**（实例 `aml`，命名空间 `aml`），本机能通过代理访问 Docker Hub：
+   ```bash
+   brew install crane
+   R=$(aliyun cr GetAuthorizationToken --region cn-shenzhen --InstanceId cri-cd8eod8vqw45uiis)
+   echo "$R" | jq -r .AuthorizationToken | crane auth login aml-registry.cn-shenzhen.cr.aliyuncs.com \
+     -u "$(echo "$R" | jq -r .TempUsername)" --password-stdin
+   for i in trustgraph-flow:2.10.10 trustgraph-docling:2.10.10 trustgraph-ui:2.2.5; do
+     crane copy --platform linux/amd64 docker.io/trustgraph/$i aml-registry.cn-shenzhen.cr.aliyuncs.com/aml/$i
+   done
+   ```
+   本机上传速度大约 0.4MB/s，docling 镜像压缩后有 1.3G，要几十分钟。
+2. **宿主机从 ACR 内网拉取**：ACR 不允许匿名拉取，要先生成一个临时令牌（1 小时有效），在脚本开头 `export ACR_USER`、`ACR_TOKEN`，再送过去执行。脚本拉完会自动登出，凭据不会留在宿主机上。拉完镜像后，从 GitHub codeload 按固定 commit 下载源码，构建 `trustgraph-flow:2.10.10-oss`，pip 走阿里云镜像源。codeload 和 PyPI 镜像源 10-09 实测都能访问。
 
 - 磁盘当前剩 27G，这一步预计占用 6~7G。
-- 如果宿主机访问不了 codeload.github.com，就在本机 `git archive` 打包，分两次用 RunCommand 送过去，解压到 `/root/tg/src/trustgraph-<REF>`，再重跑本脚本。
 - 构建最后会自检：overlay 的文件和基础镜像目录结构对不上就直接报错。
 
 ### 第 2 步：改配置（不停机）`02-config.sh`
