@@ -3,7 +3,7 @@
 # patched flow overlay. Safe to re-run; skips what is already present.
 set -euo pipefail
 
-REF=97079b66d4923d0f5b2d87c500f681e46e10ab21   # fork upgrade/v2.10.10-oss
+REF=fc59d6c562ef71ccd10c42d97950da03d3abe0f8   # fork upgrade/v2.10.10-oss
 # The host cannot reach Docker Hub, and the public mirrors either refuse
 # trustgraph/* (daocloud allowlist) or hang (hub.rat.dev). The images are
 # copied into our ACR first (see README) and pulled over the VPC endpoint.
