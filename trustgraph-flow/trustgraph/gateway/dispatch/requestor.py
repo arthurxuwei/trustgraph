@@ -30,6 +30,15 @@ def _init_gateway_metrics():
         buckets=BUCKETS_SESSION,
     )
 
+def _error_response(resp):
+    # Not every response translator encodes resp.error, so a failed request
+    # could reach the client as an empty-looking success. Report errors
+    # uniformly as {"error": {...}}, as the gateway did up to 2.7.
+    return { "error": {
+        "type": resp.error.type,
+        "message": resp.error.message,
+    } }
+
 class ServiceRequestor:
 
     def __init__(
@@ -98,6 +107,9 @@ class ServiceRequestor:
                     service=svc,
                 ).observe(time.monotonic() - t0)
 
+                if resp.error:
+                    return _error_response(resp)
+
                 result, fin = self.from_response(resp)
                 return result
 
@@ -106,7 +118,10 @@ class ServiceRequestor:
                 timeout=self.timeout,
             ):
 
-                result, fin = self.from_response(resp)
+                if resp.error:
+                    result, fin = _error_response(resp), True
+                else:
+                    result, fin = self.from_response(resp)
                 await responder(result, fin)
 
                 if resp.error or fin:

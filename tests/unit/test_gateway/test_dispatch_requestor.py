@@ -127,3 +127,81 @@ class TestServiceRequestor:
         # Verify attributes are set correctly
         assert requestor.client is None
         assert requestor.running is True
+
+
+class _EmptyTranslatorRequestor(ServiceRequestor):
+    """Mimics a translator (e.g. flow, iam) that never encodes resp.error."""
+
+    def to_request(self, request):
+        return request
+
+    def from_response(self, response):
+        return {}, True
+
+
+def _error_resp():
+    resp = MagicMock()
+    resp.error.type = "flow-error"
+    resp.error.message = "Flow ID invalid"
+    return resp
+
+
+def _requestor_with_client(client):
+    requestor = _EmptyTranslatorRequestor(
+        backend=MagicMock(),
+        request_queue="q", request_schema=MagicMock(),
+        response_queue="r", response_schema=MagicMock(),
+    )
+    requestor.client = client
+    return requestor
+
+
+class TestServiceRequestorErrors:
+    """Errors must reach the client even when the translator drops them."""
+
+    @pytest.mark.asyncio
+    async def test_request_error_is_reported(self):
+        client = MagicMock()
+        client.request = AsyncMock(return_value=_error_resp())
+        requestor = _requestor_with_client(client)
+
+        with patch('trustgraph.gateway.dispatch.requestor._init_gateway_metrics'):
+            ServiceRequestor.gateway_request_metric = MagicMock()
+            ServiceRequestor.gateway_request_duration_metric = MagicMock()
+            result = await requestor.process({})
+
+        assert result == {"error": {
+            "type": "flow-error", "message": "Flow ID invalid",
+        }}
+
+    @pytest.mark.asyncio
+    async def test_stream_error_is_reported_as_final(self):
+        async def stream(*args, **kwargs):
+            yield _error_resp()
+
+        client = MagicMock()
+        client.request_stream = stream
+        requestor = _requestor_with_client(client)
+        responder = AsyncMock()
+
+        ServiceRequestor.gateway_request_metric = MagicMock()
+        ServiceRequestor.gateway_request_duration_metric = MagicMock()
+        result = await requestor.process({}, responder)
+
+        expected = {"error": {
+            "type": "flow-error", "message": "Flow ID invalid",
+        }}
+        responder.assert_awaited_once_with(expected, True)
+        assert result == expected
+
+    @pytest.mark.asyncio
+    async def test_success_still_uses_translator(self):
+        resp = MagicMock()
+        resp.error = None
+        client = MagicMock()
+        client.request = AsyncMock(return_value=resp)
+        requestor = _requestor_with_client(client)
+
+        ServiceRequestor.gateway_request_metric = MagicMock()
+        ServiceRequestor.gateway_request_duration_metric = MagicMock()
+        assert await requestor.process({}) == {}
