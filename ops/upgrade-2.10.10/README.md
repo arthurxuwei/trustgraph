@@ -110,6 +110,20 @@ AML 侧验证都通过后，删掉 2.7.5 的旧镜像和镜像站的别名 tag�
 
 - **2.10 是否调用了生产配置里没有的提示词模板**：现有空间的模板是 2.7.5 时期写入的，TemplateSeed 和 WorkspaceInit 只补缺失的键、不覆盖已有的。如果 2.10 的 graph-rag、agent 或抽取用到了新的模板 id，会在第一次调用时报错。核对代码的那一步没能完成，靠第 4 步的问答、抽取验证和日志检查来兜底。
 
+## 下次升级 TG 前必须检查：NLTK 数据
+
+本体抽取（kg-extract-ontology，跑在 ingest 里）运行时会从 raw.githubusercontent.com 下载 NLTK 数据，我们的主机访问不了。
+所以 overlay 把数据打进了镜像（`containers/nltk_data/`），构建时会检查。2026-10-09 升级后，所有文档都卡在「处理中 0/N 块」，原因就是这个。
+如果新版本用到了别的 NLTK 资源，构建检查不会发现，只会在上线后出现同样的症状，ingest 日志里能看到 `LookupError`。升级前先跑：
+
+```bash
+git grep -hoE "nltk\.(download|data\.find|data\.load)\(['\"][^'\"]+" -- '*.py' ':!tests' | sort -u
+```
+
+和 `containers/nltk_data/` 下的文件对照，缺的资源用 curl 从 `https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/<类别>/<名称>.zip` 下载后补进去。
+不要用 `nltk.download`：本机走 Clash fake-ip 时它会报 `restricted IP`，下载失败。
+Containerfile 里的检查清单也要同步更新。
+
 ## 升级后行为上的变化（已知，接受）
 
 - **graph-rag 查询范围（#1159）**：不传 `graph` 时，从只查默认图变成查所有图，`urn:graph:source` 里的溯源边也可能进入候选。问答质量要在第 4 步的问答检查里留意。
