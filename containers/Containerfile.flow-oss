@@ -5,6 +5,8 @@ FROM trustgraph/trustgraph-flow:2.10.10
 #   - Librarian: pluggable object store with Aliyun OSS support
 #   - Provenance + recursive chunker: emit tg:chunkCount on chunk entities
 #   - Gateway requestor: report service errors uniformly as {"error": ...}
+# Hosts without direct PyPI access can pass --build-arg PIP_INDEX_URL=<mirror>.
+ARG PIP_INDEX_URL
 RUN python -m pip install --no-cache-dir 'alibabacloud-credentials==1.0.12'
 
 COPY trustgraph-flow/trustgraph/librarian/blob_store.py \
