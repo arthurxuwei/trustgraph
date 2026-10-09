@@ -22,9 +22,11 @@ echo "${ACR_TOKEN:?export ACR_USER/ACR_TOKEN first}" \
   | docker login -u "$ACR_USER" --password-stdin $ACR >/dev/null
 trap 'docker logout $ACR >/dev/null 2>&1 || true' EXIT
 
-for img in trustgraph/trustgraph-flow:2.10.10 \
-           trustgraph/trustgraph-docling:2.10.10 \
-           trustgraph/trustgraph-ui:2.2.5; do
+# IMAGES may be exported to pull a subset (e.g. while one is still being
+# copied into ACR); re-running later fetches whatever is missing.
+for img in ${IMAGES:-trustgraph/trustgraph-flow:2.10.10 \
+                     trustgraph/trustgraph-docling:2.10.10 \
+                     trustgraph/trustgraph-ui:2.2.5}; do
   if docker image inspect "$img" >/dev/null 2>&1; then
     echo "have $img"
   else
