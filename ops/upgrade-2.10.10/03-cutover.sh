@@ -32,7 +32,7 @@ done
 # Every 2.10 processor asks config-svc for getkeys-all-ws at startup, so the
 # control group (config-svc, flow-svc, iam, librarian) must be up first.
 echo "== start control"
-docker compose up -d --no-deps control
+docker compose up -d --no-deps --pull never control
 for i in $(seq 1 40); do
   if docker logs --since 5m bundle-control-1 2>&1 | grep -qiE 'config.*(start|ready|listening)|Starting group'; then break; fi
   sleep 3
@@ -40,7 +40,12 @@ done
 sleep 15
 docker inspect -f '{{.Name}} {{.State.Status}} restarts={{.RestartCount}}' bundle-control-1
 
+# The host cannot reach Docker Hub; any image compose cannot find under its
+# docker.io name triggers a pull that times out and aborts the whole `up`
+# (2026-10-09: the MCP servers' image only existed as hub.rat.dev/...).
+docker image inspect docker.io/trustgraph/ddg-mcp-server:0.1.1 >/dev/null 2>&1 \
+  || docker tag hub.rat.dev/trustgraph/ddg-mcp-server:0.1.1 docker.io/trustgraph/ddg-mcp-server:0.1.1
 echo "== start: $REST"
-docker compose up -d --no-deps $REST
+docker compose up -d --no-deps --pull never $REST
 sleep 30
 docker compose ps --format '{{.Service}}\t{{.Image}}\t{{.Status}}'
