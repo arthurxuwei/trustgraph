@@ -5,6 +5,9 @@ FROM trustgraph/trustgraph-flow:2.10.10
 #   - Librarian: pluggable object store with Aliyun OSS support
 #   - Provenance + recursive chunker: emit tg:chunkCount on chunk entities
 #   - Gateway requestor: report service errors uniformly as {"error": ...}
+# plus the NLTK data the ontology extractor needs. It is normally downloaded
+# from raw.githubusercontent.com at runtime, which our hosts cannot reach, so
+# kg-extract-ontology would fail on every chunk.
 # Hosts without direct PyPI access can pass --build-arg PIP_INDEX_URL=<mirror>.
 ARG PIP_INDEX_URL
 RUN python -m pip install --no-cache-dir 'alibabacloud-credentials==1.0.12'
@@ -23,9 +26,19 @@ COPY trustgraph-flow/trustgraph/chunking/recursive/chunker.py \
 COPY trustgraph-flow/trustgraph/gateway/dispatch/requestor.py \
      /usr/local/lib/python3.13/site-packages/trustgraph/gateway/dispatch/
 
+COPY containers/nltk_data/ /tmp/nltk_data/
+RUN python -c "\
+import zipfile; \
+dirs = {'punkt_tab': 'tokenizers', 'stopwords': 'corpora', 'averaged_perceptron_tagger_eng': 'taggers'}; \
+[zipfile.ZipFile(f'/tmp/nltk_data/{n}.zip').extractall(f'/usr/share/nltk_data/{d}') for n, d in dirs.items()]" \
+ && rm -rf /tmp/nltk_data
+
 # Fail the build if the overlaid files do not match the base image's layout.
 RUN python -c "\
 import inspect, trustgraph.librarian.blob_store, trustgraph.chunking.recursive.chunker; \
 from trustgraph.gateway.dispatch.requestor import _error_response; \
 from trustgraph.provenance.triples import derived_entity_triples; \
-assert 'chunk_count' in inspect.signature(derived_entity_triples).parameters"
+assert 'chunk_count' in inspect.signature(derived_entity_triples).parameters; \
+import nltk; [nltk.data.find(r) for r in ('tokenizers/punkt_tab', 'corpora/stopwords', 'taggers/averaged_perceptron_tagger_eng')]; \
+from trustgraph.extract.kg.ontology.text_processor import TextProcessor; \
+assert len(TextProcessor().process_chunk('First sentence. Second sentence.', extract_phrases=True)) >= 2"
